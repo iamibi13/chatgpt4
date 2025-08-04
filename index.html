@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChatGPT</title>
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      header {
+        background: #007bff;
+        color: white;
+        padding: 10px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .chat-box {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        max-width: 700px;
+        width: 100%;
+        margin: 0 auto;
+      }
+
+      #chat-container {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        background: white;
+      }
+
+      .message {
+        margin-bottom: 15px;
+        line-height: 1.6;
+      }
+
+      .message strong {
+        display: block;
+        color: #333;
+        margin-bottom: 4px;
+      }
+
+      .code-block {
+        background: #111;
+        color: #0f0;
+        padding: 10px;
+        font-family: monospace;
+        border-radius: 6px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+
+      .input-area {
+        display: flex;
+        padding: 10px;
+        border-top: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      #user-input {
+        flex: 1;
+        padding: 10px;
+        font-size: 16px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+      }
+
+      #send-btn,
+      #clear-btn {
+        margin-left: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+      }
+
+      #send-btn {
+        background-color: #007bff;
+        color: white;
+      }
+
+      #send-btn:hover {
+        background-color: #0056b3;
+      }
+
+      #clear-btn {
+        background-color: #dc3545;
+        color: white;
+      }
+
+      #clear-btn:hover {
+        background-color: #b52d3b;
+      }
+
+      #typing {
+        font-style: italic;
+        color: gray;
+        animation: blink 1s steps(1) infinite;
+      }
+
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 0.2;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      .api-key {
+        padding: 10px;
+        background: #eee;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .api-key input {
+        flex: 1;
+        padding: 6px;
+        font-size: 14px;
+      }
+
+      .api-key button {
+        padding: 6px 12px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h2>ChatGPT</h2>
+      <button id="clear-btn">Clear Chat</button>
+    </header>
+
+    <div class="api-key">
+      <input
+        id="api-input"
+        type="password"
+        placeholder="Enter your OpenRouter API Key"
+      />
+      <button onclick="saveKey()">Save</button>
+    </div>
+
+    <div class="chat-box">
+      <div id="chat-container"></div>
+      <div class="input-area">
+        <input type="text" id="user-input" placeholder="Type a message..." />
+        <button id="send-btn">Send</button>
+      </div>
+    </div>
+
+    <script>
+      const chatContainer = document.getElementById("chat-container");
+      const userInput = document.getElementById("user-input");
+      const sendBtn = document.getElementById("send-btn");
+      const clearBtn = document.getElementById("clear-btn");
+
+      let apiKey = localStorage.getItem("openrouter-api") || "";
+
+      if (apiKey) {
+        document.getElementById("api-input").value = apiKey;
+      }
+
+      function saveKey() {
+        apiKey = document.getElementById("api-input").value.trim();
+        localStorage.setItem("openrouter-api", apiKey);
+        alert("API Key saved!");
+      }
+
+      function appendMessage(sender, message, isCode = false) {
+        const div = document.createElement("div");
+        div.classList.add("message");
+
+        const strong = document.createElement("strong");
+        strong.textContent = sender;
+        div.appendChild(strong);
+
+        if (isCode) {
+          const codeBlock = document.createElement("div");
+          codeBlock.classList.add("code-block");
+          codeBlock.textContent = message;
+          div.appendChild(codeBlock);
+        } else {
+          const span = document.createElement("span");
+          span.innerHTML = message;
+          div.appendChild(span);
+        }
+
+        chatContainer.appendChild(div);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        saveHistory();
+      }
+
+      function showTyping() {
+        const typing = document.createElement("div");
+        typing.id = "typing";
+        typing.textContent = "Bot is typing...";
+        chatContainer.appendChild(typing);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+
+      function removeTyping() {
+        const typing = document.getElementById("typing");
+        if (typing) typing.remove();
+      }
+
+      async function sendMessage() {
+        const msg = userInput.value.trim();
+        if (!msg || !apiKey) return;
+
+        appendMessage("You", msg);
+        userInput.value = "";
+        showTyping();
+
+        try {
+          const response = await fetch(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "openai/gpt-3.5-turbo",
+                messages: [{ role: "user", content: msg }],
+              }),
+            }
+          );
+
+          const data = await response.json();
+          removeTyping();
+
+          const reply =
+            data.choices?.[0]?.message?.content || "Error: No reply.";
+          const isCode = reply.includes("```");
+
+          if (isCode) {
+            const cleaned = reply.replace(/```[a-z]*\n?|```/g, "").trim();
+            appendMessage("Bot", cleaned, true);
+          } else {
+            appendMessage("Bot", reply);
+          }
+        } catch (err) {
+          removeTyping();
+          appendMessage("Bot", "Something went wrong.");
+          console.error(err);
+        }
+      }
+
+      function saveHistory() {
+        localStorage.setItem("chat-history", chatContainer.innerHTML);
+      }
+
+      function loadHistory() {
+        const saved = localStorage.getItem("chat-history");
+        if (saved) chatContainer.innerHTML = saved;
+      }
+
+      function clearChat() {
+        chatContainer.innerHTML = "";
+        localStorage.removeItem("chat-history");
+      }
+
+      sendBtn.onclick = sendMessage;
+      userInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") sendMessage();
+      });
+
+      clearBtn.onclick = clearChat;
+
+      loadHistory();
+    </script>
+  </body>
+</html>
